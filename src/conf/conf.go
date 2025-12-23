@@ -2,26 +2,22 @@ package conf
 
 import (
 	"fmt"
+	"os"
 
-	// "github.com/spf13/cobra"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 const INPUT = "input"
 const HEADER_LINES = "header_lines"
 
-//默认配置文件在用户目录
+// 默认配置文件在用户目录
 func ReadConfig() {
 
-	// home, err:= os.UserHomeDir()
-
-	// cobra.CheckErr(err)
-
-	// viper.AddConfigPath(home)
-	// viper.SetConfigName("config_common.yaml")
-
-	viper.AddConfigPath("../conf")
-	viper.SetConfigName("config.yaml")
+	home, err := os.UserHomeDir()
+	cobra.CheckErr(err)
+	viper.AddConfigPath(home)
+	viper.SetConfigName("config_elec.yaml")
 
 	viper.SetConfigType("yaml")
 

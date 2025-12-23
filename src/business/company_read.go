@@ -17,6 +17,8 @@ const CONTENT_CONTACT = "联系人"
 const CONTENT_PHONE = "电话"
 const CONTENT_NEED_BILL = "需要账单"
 
+var dataRowStart = 0
+
 func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) error {
 	file, err := xlsx.OpenFile(viper.GetString("elec_file"))
 
@@ -37,7 +39,7 @@ func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) error {
 		panic("can not get company info !!!")
 	}
 
-	*cFinish <- "company finish"
+	*cFinish <- "com_f"
 	return nil
 }
 
@@ -50,8 +52,6 @@ func readSheetCompanyInfo(sheet *xlsx.Sheet, c *chan (types.CompanyInfo)) error 
 
 	err = readCompanyData(sheet, &headers, c)
 
-	fmt.Printf("-------- \n %+v \n", c)
-
 	if err != nil {
 		return err
 	}
@@ -59,12 +59,15 @@ func readSheetCompanyInfo(sheet *xlsx.Sheet, c *chan (types.CompanyInfo)) error 
 }
 
 func readCompanyHeaders(sheet *xlsx.Sheet, headers *[]string) error {
-	headerLines := viper.GetInt("company_header_lines")
 
-	for rowIndex := range headerLines {
+	for rowIndex := 0; rowIndex < sheet.MaxRow; rowIndex++ {
 		row, err := sheet.Row(rowIndex)
 		if err != nil {
 			fmt.Println("read company err :", err.Error())
+			continue
+		}
+
+		if row.GetCell(0).Value != "门牌号" {
 			continue
 		}
 
@@ -86,14 +89,14 @@ func readCompanyHeaders(sheet *xlsx.Sheet, headers *[]string) error {
 				//ignore
 			}
 		}
+		dataRowStart = rowIndex + 1
 	}
 	return nil
 }
 
 func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.CompanyInfo)) error {
-	headerLines := viper.GetInt("company_header_lines")
 
-	for rowIndex := headerLines; rowIndex < sheet.MaxRow; rowIndex++ {
+	for rowIndex := dataRowStart; rowIndex < sheet.MaxRow; rowIndex++ {
 		row, err := sheet.Row(rowIndex)
 		if err != nil {
 			return err
@@ -102,6 +105,7 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 		cip := types.CompanyInfo{IsNeedBill: true}
 		for colIndex := 0; colIndex < sheet.MaxCol; colIndex++ {
 			cell := row.GetCell(colIndex)
+
 			switch (*headers)[colIndex] {
 			case "GateNo":
 				v := cell.Value
@@ -119,6 +123,7 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 				reflect.ValueOf(&cip).Elem().FieldByName((*headers)[colIndex]).SetString(cell.Value)
 			}
 		}
+
 		*c <- cip
 	}
 	return nil

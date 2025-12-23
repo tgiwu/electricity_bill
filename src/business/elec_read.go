@@ -15,7 +15,7 @@ import (
 
 const (
 	ELEC_CONTENT_ROOM_NO     = "门牌号"
-	ELEC_CONTENT_TIMES       = "倍数"
+	ELEC_CONTENT_TIMES       = "倍率"
 	ELEC_CONTENT_ORIGINAL    = "表底"
 	ELEC_CONTENT_INDICATION  = "度数"
 	ELEC_CONTENT_AIR_CONTRAL = "空调"
@@ -37,7 +37,7 @@ func ReadElec(ce *chan types.Indication, finish *chan string) error {
 	}
 
 	readSheets(file, ce, finish)
-	*finish <- "elec finish"
+	*finish <- "ele_f"
 	return nil
 }
 
@@ -46,13 +46,8 @@ func readSheets(file *xlsx.File, ce *chan types.Indication, finish *chan string)
 	if sheet, found := file.Sheet[viper.GetString("indication_sheet")]; found {
 		readSheetIndic(sheet, ce, finish)
 	} else {
-		panic("can not find indication sheet !!!!")
+		log.Panic("can not find indication sheet !!!!")
 	}
-	//name to index
-	// sheet, found := file.Sheet[viper.GetString("target_year")]
-	// if !found {
-	// 	panic("can not find sheet named " + viper.GetString("target_year"))
-	// }
 	return nil
 }
 
@@ -64,7 +59,7 @@ func readSheetIndic(sheet *xlsx.Sheet, ce *chan types.Indication, finish *chan s
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s : %v \n", sheet.Name, headerList)
+	// fmt.Printf("%s : %v \n", sheet.Name, headerList)
 
 	err = readElecData(*sheet, &headerList, ce, finish)
 
@@ -84,7 +79,7 @@ func readIndicHeader(sheet *xlsx.Sheet, headerList *map[int]string, finish *chan
 		}
 
 		//find header row by cell value CONTENT_ROOM_NO
-		if v := row.GetCell(0).Value; v == CONTENT_ROOM_NO {
+		if v := strings.TrimSpace(row.GetCell(0).Value); v == CONTENT_ROOM_NO {
 			log.Println("header row is ", rowIndex)
 			(*headerList)[0] = "RoomNo"
 			var (
@@ -103,7 +98,7 @@ func readIndicHeader(sheet *xlsx.Sheet, headerList *map[int]string, finish *chan
 			}
 
 			for colIndex := 1; colIndex < sheet.MaxCol; colIndex++ {
-				v = row.GetCell(colIndex).Value
+				v = strings.TrimSpace(row.GetCell(colIndex).Value)
 				if len(v) == 0 {
 					continue
 				}
@@ -179,6 +174,6 @@ func readElecData(sheet xlsx.Sheet, headers *map[int]string, ce *chan types.Indi
 			*ce <- indication
 		}
 	}
-	*finish <- "elec finish"
+	*finish <- "elec indication read finish"
 	return nil
 }

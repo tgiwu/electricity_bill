@@ -3,7 +3,7 @@ module electricity_bill
 go 1.24.4
 
 require (
-	github.com/ZeroHawkeye/wordZero v1.3.9
+	github.com/ZeroHawkeye/wordZero v1.5.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.20.1
 	github.com/tealeg/xlsx/v3 v3.3.13

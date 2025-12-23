@@ -4,10 +4,16 @@ import (
 	"electricity_bill/src/types"
 	"electricity_bill/src/utils"
 	"fmt"
+	"io/fs"
 	"log"
+	"os"
 	"path"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/ZeroHawkeye/wordZero/pkg/document"
 	"github.com/ZeroHawkeye/wordZero/pkg/style"
@@ -25,26 +31,34 @@ const (
 	STYLE_TABLE_AIR_CONTROL
 )
 
+var styleTextFiveNormal = document.TextFormat{
+	Bold:       false,
+	Italic:     false,
+	FontSize:   11,
+	FontColor:  "000000",
+	FontFamily: "宋体 (中文正文)",
+}
+
 var (
 	styleTableBillNormal = document.TableConfig{
 		Cols:      6,
 		Rows:      2,
-		Width:     7500,
-		ColWidths: []int{1000, 1500, 1000, 1500, 1500, 1000},
+		Width:     9000,
+		ColWidths: []int{1500, 1500, 1500, 1500, 1500, 1500},
 	}
 
 	styleTableBillNoPay = document.TableConfig{
 		Cols:      5,
 		Rows:      2,
-		Width:     7500,
-		ColWidths: []int{1200, 1700, 1200, 1200, 1700},
+		Width:     9000,
+		ColWidths: []int{1800, 1800, 1800, 1800, 1800},
 	}
 
 	styleTableBillAirControl = document.TableConfig{
 		Cols:      2,
 		Rows:      2,
-		Width:     7500,
-		ColWidths: []int{1500, 6000},
+		Width:     9000,
+		ColWidths: []int{3000, 6000},
 	}
 )
 
@@ -130,48 +144,65 @@ func setUpStyle(doc *document.Document) {
 	})
 }
 
-func CreateDocxs(indicMap *map[int]map[string]types.Indication, companiesMap *map[int]map[string]types.CompanyInfo, finish *chan string) {
+func CreateDocxs(indicMap *map[int]map[string]types.Indication, companiesMap *map[int]map[string]types.CompanyInfo, finish *chan string, wg *sync.WaitGroup) {
 
-	var wg sync.WaitGroup
-	count := 0
+	path := viper.GetString("output")
 
+	filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+		if strings.HasSuffix(info.Name(), ".docx") {
+			log.Println("remove ", path)
+			os.Remove(path)
+		}
+		return nil
+	})
+
+	log.Println("start create docx. ")
 	for unit, companies := range *companiesMap {
 		if indics, found := (*indicMap)[unit]; found {
-			count++
-			wg.Add(1)
 			go createSingleDocx(&indics, &companies, unit, finish)
+		} else {
+			*finish <- fmt.Sprintf("no_data_unit_%d_f", unit)
 		}
 	}
-	wg.Wait()
-	*finish <- "All docxs create finish !!"
+	*finish <- "docx create finish"
 }
 
 func createSingleDocx(indics *map[string]types.Indication, companies *map[string]types.CompanyInfo, unit int, finish *chan string) {
+	document.SetGlobalLevel(document.LogLevelError)
 	doc := document.New()
 	setUpStyle(doc)
 	doc.SetPageSize(document.PageSizeA4)
 	doc.SetPageOrientation(document.OrientationPortrait)
-	doc.SetPageMargins(5.56, 15, 5.56, 15)
+	doc.SetPageMargins(23, 27, 23, 27)
 
-	for _, info := range *companies {
-		if indic, found := (*indics)[info.GateNo]; found && info.IsNeedBill {
+	keys := sortByGateNo(companies)
+
+	for index, key := range keys {
+		info := (*companies)[key]
+		if indic, found := (*indics)[key]; found && info.IsNeedBill {
 			createDocxPage(doc, &indic, &info)
+			if index != len(keys)-1 {
+				//break
+				doc.AddPageBreak()
+			}
 		}
 
 	}
 
 	doc.Save(path.Join(viper.GetString("output"), fmt.Sprintf("%s-%d电费通知单-%s单元.docx", viper.GetString("target_year"), viper.GetInt("target_month"), CN_NUMBER[unit])))
-	
-	*finish <- fmt.Sprintf("unit %d finish\n", unit)
+
+	*finish <- fmt.Sprintf("_f_unit_%d", unit)
 }
 
 func createDocxPage(doc *document.Document, indic *types.Indication, companyInfo *types.CompanyInfo) {
 	title(doc)
+	doc.AddParagraph("")
 	floor(doc, companyInfo)
 	nameAndAddress(doc, companyInfo)
-	doc.AddParagraph("/n/n")
+	doc.AddParagraph("")
+	doc.AddParagraph("")
 	sign(doc)
-	doc.AddParagraph("/n")
+	doc.AddParagraph("")
 	//table
 	billInfo(doc, indic)
 	//expense
@@ -213,7 +244,19 @@ func tableArea(doc *document.Document, indic *types.Indication, style int) {
 		log.Fatal("unsupport table style ", style)
 		return
 	}
-	doc.AddTable(&config)
+	table, _ := doc.AddTable(&config)
+
+	for row := 0; row < table.GetRowCount(); row++ {
+		table.SetRowHeight(row, &document.RowHeightConfig{
+			Height: 26,
+		})
+		for col := 0; col < table.GetColumnCount(); col++ {
+			f, _ := table.GetCellFormat(row, col)
+			f.HorizontalAlign = document.CellAlignCenter
+			f.VerticalAlign = document.CellVAlignCenter
+			table.SetCellFormat(row, col, f)
+		}
+	}
 }
 func tableTitle(doc *document.Document, indic *types.Indication, style int) {
 	var paraTitle = &document.Paragraph{}
@@ -237,14 +280,14 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 		config.Width = styleTableBillNormal.Width
 		config.ColWidths = styleTableBillNormal.ColWidths
 		config.Data = [][]string{
-				{"月份", "上月表数", "倍率", "本月表数", "实际用量（度）", "应缴电费"},
-				{fmt.Sprint(viper.GetInt("target_month")),
-					fmt.Sprint(indic.IndicLastMonth),
-					strconv.FormatFloat(indic.Times, 'f', 0, 64),
-					strconv.FormatFloat(indic.Indic, 'f', 2, 64),
-					strconv.FormatFloat(indic.Cost, 'f', 2, 64),
-					strconv.FormatFloat(indic.Cost, 'f', 2, 64)},
-			}
+			{"月份", "上月表数", "倍率", "本月表数", "实际用量（度）", "应缴电费"},
+			{fmt.Sprint(viper.GetInt("target_month")),
+				fmt.Sprint(indic.IndicLastMonth),
+				strconv.FormatFloat(indic.Times, 'f', 0, 64),
+				strconv.FormatFloat(indic.Indic, 'f', 2, 64),
+				strconv.FormatFloat(indic.Cost, 'f', 2, 64),
+				strconv.FormatFloat(indic.Cost, 'f', 2, 64)},
+		}
 
 	case STYLE_TABLE_BILL_NO_PAY:
 		config.Cols = styleTableBillNoPay.Cols
@@ -252,22 +295,22 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 		config.Width = styleTableBillNoPay.Width
 		config.ColWidths = styleTableBillNoPay.ColWidths
 		config.Data = [][]string{
-				{"月份", "上月表数", "倍率", "本月表数", "实际用量（度）"},
-				{fmt.Sprint(viper.GetInt("target_month")),
-					fmt.Sprint(indic.IndicLastMonth),
-					strconv.FormatFloat(indic.Times, 'f', 0, 64),
-					strconv.FormatFloat(indic.Indic, 'f', 2, 64),
-					strconv.FormatFloat(indic.Cost, 'f', 2, 64)},
-			}
+			{"月份", "上月表数", "倍率", "本月表数", "实际用量（度）"},
+			{fmt.Sprint(viper.GetInt("target_month")),
+				fmt.Sprint(indic.IndicLastMonth),
+				strconv.FormatFloat(indic.Times, 'f', 0, 64),
+				strconv.FormatFloat(indic.Indic, 'f', 2, 64),
+				strconv.FormatFloat(indic.Cost, 'f', 2, 64)},
+		}
 	case STYLE_TABLE_AIR_CONTROL:
 		config.Cols = styleTableBillAirControl.Cols
 		config.Rows = styleTableBillAirControl.Rows
 		config.Width = styleTableBillAirControl.Width
 		config.ColWidths = styleTableBillAirControl.ColWidths
 		config.Data = [][]string{
-				{"月份", "实际用量（度）"},
-				{fmt.Sprint(viper.GetInt("target_month")), strconv.FormatFloat(indic.CostAirControal, 'f', 2, 64)},
-			}
+			{"月份", "实际用量（度）"},
+			{fmt.Sprint(viper.GetInt("target_month")), strconv.FormatFloat(indic.CostAirControal, 'f', 2, 64)},
+		}
 	default:
 		//ignore
 	}
@@ -277,17 +320,17 @@ func billInfo(doc *document.Document, indic *types.Indication) {
 	para := doc.AddParagraph("缴费信息")
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
 
-	doc.AddParagraph("\n")
+	doc.AddParagraph("")
 
 	if indic.RoomNo == "1-1-总" {
 		tableArea(doc, indic, STYLE_TABLE_BILL)
-
 	} else {
 		tableArea(doc, indic, STYLE_TABLE_BILL_NO_PAY)
 	}
-
+	doc.AddParagraph("")
 	if indic.CostAirControal != 0 {
 		tableArea(doc, indic, STYLE_TABLE_AIR_CONTROL)
+		doc.AddParagraph("")
 	}
 }
 
@@ -296,24 +339,101 @@ func expense(doc *document.Document, indic *types.Indication) {
 	month := viper.GetInt("target_month")
 	lastDayInMonth := utils.DaysInMonth(year, month)
 	//charging cycles
+	doc.AddParagraph("")
 	chargingCyclesPara := doc.AddParagraph(
-		fmt.Sprintf("本期电费周期：%d年%d月1日 至 %d年%d月%d日（1个月）", year, month, year, month, lastDayInMonth))
+		fmt.Sprintf("1.本期电费周期：%d年%d月1日 至 %d年%d月%d日（1个月）", year, month, year, month, lastDayInMonth))
 	chargingCyclesPara.SetStyle(STYLE_SU_FIVE_LEFT)
+
 	//electricity cost sum
-
+	doc.AddParagraph("")
+	costSumPara := doc.AddFormattedParagraph("2.本期用电量：", &styleTextFiveNormal)
+	costSumPara.Runs = append(costSumPara.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("度"))
 	//electricity price
-
+	doc.AddParagraph("")
+	pricePara := doc.AddFormattedParagraph("3.单价：￥", &styleTextFiveNormal)
+	pricePara.Runs = append(pricePara.Runs, runWithunderline(" 1.00 "), runNormal("元/度"))
 	//electricity pay
+	doc.AddParagraph("")
 
+	para := doc.AddFormattedParagraph("4.本期电费金额：￥ ", &styleTextFiveNormal)
+	para.Runs = append(para.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("元"))
 	//liquidated damages
+	doc.AddParagraph("")
+	doc.AddFormattedParagraph("5.违约金（如逾期）：￥__/_____ 元", &styleTextFiveNormal)
 
 	//expense sum
+	doc.AddParagraph("")
+
+	expenseSumPara := doc.AddFormattedParagraph("6.合计应缴金额：￥", &styleTextFiveNormal)
+	expenseSumPara.Runs = append(expenseSumPara.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("元"))
 
 	//account info
+	doc.AddParagraph("")
+	doc.AddFormattedParagraph("7.账户信息：", &styleTextFiveNormal)
+	doc.AddFormattedParagraph(viper.GetString("account_name"), &styleTextFiveNormal)
+	doc.AddFormattedParagraph(fmt.Sprintf("地址：%s", viper.GetString("address")), &styleTextFiveNormal)
+	doc.AddFormattedParagraph(fmt.Sprintf("开户行：%s", viper.GetString("account_bank")), &styleTextFiveNormal)
+	doc.AddFormattedParagraph(fmt.Sprintf("账号：%s", viper.GetString("account_number")), &styleTextFiveNormal)
+}
+
+func runWithunderline(underline string) document.Run {
+	return document.Run{
+		Text: document.Text{
+			Content: underline,
+		},
+		Properties: &document.RunProperties{
+			FontFamily: &document.FontFamily{
+				ASCII:    "宋体 (中文正文)",
+				HAnsi:    "宋体 (中文正文)",
+				EastAsia: "宋体 (中文正文)",
+				CS:       "宋体 (中文正文)",
+			},
+			FontSize: &document.FontSize{
+				Val: "22",
+			},
+			Underline: &document.Underline{
+				Val: "single",
+			},
+		},
+	}
+}
+
+func runNormal(s string) document.Run {
+
+	return document.Run{
+		Text: document.Text{
+			Content: s,
+		},
+		Properties: &document.RunProperties{
+			FontFamily: &document.FontFamily{
+				ASCII:    "宋体 (中文正文)",
+				HAnsi:    "宋体 (中文正文)",
+				EastAsia: "宋体 (中文正文)",
+				CS:       "宋体 (中文正文)",
+			},
+			FontSize: &document.FontSize{
+				Val: "22",
+			},
+		},
+	}
 }
 
 func backup(doc *document.Document) {
-
-	para := doc.AddParagraph(fmt.Sprintf("缴费截止日期\n请在 %s年%d月15日前缴纳，逾期将按日收取违约金（0.05%%-0.1%%/天）。", viper.GetString("target_year"), viper.GetInt("target_month")))
+	year, _ := strconv.Atoi(viper.GetString("target_year"))
+	month := viper.GetInt("target_month")
+	next := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	next = next.AddDate(0, 1, 0)
+	para := doc.AddParagraph(fmt.Sprintf("缴费截止日期\n请在 %d年%d月15日前缴纳，逾期将按日收取违约金（0.05%%-0.1%%/天）。", next.Year(), next.Month()))
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
+}
+
+func sortByGateNo(companies *map[string]types.CompanyInfo) []string {
+
+	keys := []string{}
+	for key := range *companies {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	return keys
 }

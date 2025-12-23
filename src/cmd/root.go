@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"electricity_bill/src/business"
@@ -25,6 +26,8 @@ var (
 	input string
 	//并发线程数
 	count int = 0
+	//create docx flag
+	isCreateDocx = false
 
 	indicMap     map[int]map[string]types.Indication
 	companiesMap map[int]map[string]types.CompanyInfo
@@ -42,20 +45,33 @@ var (
 			ce := make(chan types.Indication)
 			cFinish := make(chan (string))
 
+			//read company info
 			count++
-			// count++
+			//read indication info
+			count++
 			var wg sync.WaitGroup
 			wg.Add(count)
 
 			go handleChan(cc, cFinish, ce, &wg)
 			go business.ReadCompany(&cc, &cFinish)
 			go business.ReadElec(&ce, &cFinish)
+
+			// log.Printf("%+v\n", indicMap)
+
 			wg.Wait()
 
-			if len(companiesMap) > 0 && len(indicMap) > 0{
-				word.CreateDocxs(&indicMap, &companiesMap, &cFinish)
+			if len(companiesMap) > 0 && len(indicMap) > 0 {
+
+				wg = sync.WaitGroup{}
+				count = len(companiesMap)
+				wg.Add(len(companiesMap))
+
+				go handleDocxCreate(cFinish, &wg)
+
+				word.CreateDocxs(&indicMap, &companiesMap, &cFinish, &wg)
+				wg.Wait()
 			}
-			log.Printf("%+v\n", indicMap)
+
 		},
 	}
 )
@@ -86,8 +102,6 @@ func init() {
 	viper.SetDefault("target_year", "2025")
 	viper.SetDefault("company_sheet", "公司信息")
 	viper.SetDefault("indication_sheet", "电量统计")
-	// viper.SetDefault("elec_header_lines", 2)
-	viper.SetDefault("company_header_lines", 1)
 }
 
 func initConfig() {
@@ -108,11 +122,29 @@ func initConfig() {
 	fmt.Printf("init config  %+v \n", viper.AllSettings())
 }
 
+func handleDocxCreate(cFinish chan (string), wg *sync.WaitGroup) {
+	for {
+		str := <-cFinish
+		log.Println("recive msg", str)
+		if strings.HasPrefix(str, "_f") {
+			log.Println("------------done--------", str)
+			wg.Done()
+			count--
+		} else {
+			log.Println("recive none finish msg ", str)
+		}
+
+		if count == 0 {
+			return
+		}
+	}
+}
+
 func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan types.Indication, wg *sync.WaitGroup) {
 	for {
 		select {
 		case info := <-cc:
-			fmt.Printf("%+v \n", info)
+			// fmt.Printf("%+v \n", info)
 			if len(info.GateNo) == 0 {
 				log.Printf("illegal room no %+v \n", info)
 				continue
@@ -133,16 +165,18 @@ func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan type
 
 		case str := <-cFinish:
 			fmt.Println(str)
-			if str == "company finish" || str == "elec finish" {
+			if str == "ele_f" || str == "com_f" || str == "doc_f" {
 				wg.Done()
 				count--
 			}
+
 			if count == 0 {
-				// fmt.Printf("--------------- company info map --------------\n %+v", companiesMap)
+				log.Println("read finish , start create docx")
 				return
 			}
+
 		case indic := <-ce:
-			fmt.Printf("%+v\n", indic)
+			// fmt.Printf("%+v\n", indic)
 			if len(indic.RoomNo) == 0 {
 				log.Printf("illegal room no %+v \n", indic)
 				continue
