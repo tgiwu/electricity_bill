@@ -149,7 +149,11 @@ func CreateDocxs(indicMap *map[int]map[string]types.Indication, companiesMap *ma
 	path := viper.GetString("output")
 
 	filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
-		if strings.HasSuffix(info.Name(), ".docx") {
+		_, e := os.Stat(path)
+		if os.IsNotExist(e) {
+			return nil
+		}
+		if info != nil && strings.HasSuffix(info.Name(), ".docx") {
 			log.Println("remove ", path)
 			os.Remove(path)
 		}

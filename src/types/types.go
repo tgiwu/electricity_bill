@@ -1,5 +1,7 @@
 package types
 
+import "fmt"
+
 // 区域
 type Area struct {
 	Name     string  //名称
@@ -58,6 +60,16 @@ type CompanyInfo struct {
 	Floor      int    //楼层
 	Contact    string //联系人
 	Phone      string //电话
-	IsNeedBill bool  //是否需要账单，默认只要由公司信息就出账单
-	IsAddPay   bool //是否添加应缴
+	IsNeedBill bool   //是否需要账单，默认只要由公司信息就出账单
+	IsAddPay   bool   //是否添加应缴
+}
+
+// myError
+type MyError struct {
+	Path string
+	Op   string
+}
+
+func (p MyError) Error() string {
+	return fmt.Sprintf("%s %s ", p.Path, p.Op)
 }

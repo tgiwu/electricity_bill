@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -41,6 +42,11 @@ var (
 
 			fmt.Println("input  \n", viper.GetString("input"))
 
+			err := checkCriticalParameter()
+
+			if err != nil {
+				log.Panicln(err)
+			}
 			cc := make(chan types.CompanyInfo)
 			ce := make(chan types.Indication)
 			cFinish := make(chan (string))
@@ -55,8 +61,6 @@ var (
 			go handleChan(cc, cFinish, ce, &wg)
 			go business.ReadCompany(&cc, &cFinish)
 			go business.ReadElec(&ce, &cFinish)
-
-			// log.Printf("%+v\n", indicMap)
 
 			wg.Wait()
 
@@ -76,6 +80,45 @@ var (
 	}
 )
 
+func checkCriticalParameter() error {
+	outputDir := viper.GetString("output")
+	_, err := os.Stat(outputDir)
+	if err != nil && os.IsNotExist(err) {
+		log.Println("build output folder")
+		err = os.MkdirAll(outputDir, os.FileMode(0777))
+		if err != nil {
+			return err
+		}
+	}
+
+	//indication file
+	indicFilePath := viper.GetString("elec_file")
+
+	_, err = os.Stat(indicFilePath)
+	if err != nil {
+		switch {
+		case os.IsNotExist(err):
+			return types.MyError{
+				Path: indicFilePath,
+				Op:   "indic file not exist",
+			}
+		case !os.IsPermission(err):
+			return types.MyError{
+				Path: indicFilePath,
+				Op:   "need more permission",
+			}
+		}
+	}
+
+	if !strings.HasSuffix(indicFilePath, ".xlsx") {
+		return types.MyError{
+			Path: indicFilePath,
+			Op:   "err file type, not a xlsx file",
+		}
+	}
+	return nil
+}
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -84,24 +127,26 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+	currentPath, _ := filepath.Abs(".")
 
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
-	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "/Users/yangzhang/vsCodeProject/electricity_bill/output", "output path")
-	rootCmd.PersistentFlags().StringVarP(&input, "elec_file", "e", "/Users/yangzhang/vsCodeProject/electricity_bill/input/electricity.xlsx", "input file")
-	rootCmd.PersistentFlags().StringVarP(&input, "company_file", "p", "/Users/yangzhang/vsCodeProject/electricity_bill/input/companies.xlsx", "input file")
-	// rootCmd.PersistentFlags().StringVarP(&fileName, "output-file", "O", "att.docx", "file name")
-
-	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
-	viper.BindPFlag("elec_file", rootCmd.PersistentFlags().Lookup("elec_file"))
-	viper.BindPFlag("company_file", rootCmd.PersistentFlags().Lookup("company_file"))
-
-	viper.SetDefault("elec_file", "/Users/yangzhang/vsCodeProject/electricity_bill/input/electricity.xlsx")
-	viper.SetDefault("company_file", "/Users/yangzhang/vsCodeProject/electricity_bill/input/companies.xlsx")
-	viper.SetDefault("output", "/Users/yangzhang/vsCodeProject/electricity_bill/output")
+	viper.SetDefault("elec_file", filepath.Join(currentPath, "electricity.xlsx"))
+	viper.SetDefault("output", currentPath)
 	viper.SetDefault("target_month", 11)
 	viper.SetDefault("target_year", "2025")
 	viper.SetDefault("company_sheet", "公司信息")
 	viper.SetDefault("indication_sheet", "电量统计")
+
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
+	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", currentPath, "output path")
+	rootCmd.PersistentFlags().StringVarP(&input, "elec_file", "i", filepath.Join(currentPath, "electricity.xlsx"), "input file")
+	rootCmd.PersistentFlags().IntP("target_month", "m", 1, "target month")
+	rootCmd.PersistentFlags().StringP("target_year", "y", "2025", "target year")
+
+	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
+	viper.BindPFlag("elec_file", rootCmd.PersistentFlags().Lookup("elec_file"))
+	viper.BindPFlag("target_month", rootCmd.PersistentFlags().Lookup("target_month"))
+	viper.BindPFlag("target_year", rootCmd.PersistentFlags().Lookup("target_year"))
+
 }
 
 func initConfig() {

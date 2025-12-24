@@ -32,3 +32,5 @@ go.work.sum
 # .vscode/
 input/
 output/
+*.xlsx
+*.docx

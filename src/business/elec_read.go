@@ -21,34 +21,39 @@ const (
 	ELEC_CONTENT_AIR_CONTRAL = "空调"
 	ELEC_CONTENT_COST        = "用电量"
 	ELEC_CONTENT_ALL_COST    = "总用电量"
-
-	// ELEC_COLS_PER_MONTH = 4
 )
 
-// 与月份无关的独立列数
+// row number data start
 var rowNoDataStart = 0
 
-func ReadElec(ce *chan types.Indication, finish *chan string) error {
+func ReadElec(ce *chan types.Indication, finish *chan string) {
 
 	file, err := xlsx.OpenFile(viper.GetString("elec_file"))
 
 	if err != nil {
-		return err
+		log.Panic(err)
 	}
 
-	readSheets(file, ce, finish)
+	err = readSheets(file, ce, finish)
+
+	if err != nil {
+		log.Panic(err)
+	}
 	*finish <- "ele_f"
-	return nil
 }
 
 func readSheets(file *xlsx.File, ce *chan types.Indication, finish *chan string) error {
 
+	var err error = nil
 	if sheet, found := file.Sheet[viper.GetString("indication_sheet")]; found {
-		readSheetIndic(sheet, ce, finish)
+		err = readSheetIndic(sheet, ce, finish)
 	} else {
-		log.Panic("can not find indication sheet !!!!")
+		err = types.MyError{
+			Path: "",
+			Op: "can not find indication sheet !!!!",
+		}
 	}
-	return nil
+	return err
 }
 
 func readSheetIndic(sheet *xlsx.Sheet, ce *chan types.Indication, finish *chan string) error {
@@ -59,7 +64,6 @@ func readSheetIndic(sheet *xlsx.Sheet, ce *chan types.Indication, finish *chan s
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("%s : %v \n", sheet.Name, headerList)
 
 	err = readElecData(*sheet, &headerList, ce, finish)
 

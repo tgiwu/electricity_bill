@@ -3,9 +3,11 @@ package business
 import (
 	"electricity_bill/src/types"
 	"electricity_bill/src/utils"
+	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 
 	"github.com/spf13/viper"
 	"github.com/tealeg/xlsx/v3"
@@ -15,15 +17,15 @@ const CONTENT_ROOM_NO = "门牌号"
 const CONTENT_COMPANY = "单位名称"
 const CONTENT_CONTACT = "联系人"
 const CONTENT_PHONE = "电话"
-const CONTENT_NEED_BILL = "需要账单"
+const CONTENT_NEED_BILL = "账单"
 
 var dataRowStart = 0
 
-func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) error {
+func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) {
 	file, err := xlsx.OpenFile(viper.GetString("elec_file"))
 
 	if err != nil {
-		panic(err)
+		log.Panic(err)
 		// return err
 	}
 
@@ -33,14 +35,13 @@ func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) error {
 		err = readSheetCompanyInfo(sheet, c)
 
 		if err != nil {
-			panic(err)
+			log.Panic(err)
 		}
 	} else {
-		panic("can not get company info !!!")
+		log.Panic("can not get company info !!!")
 	}
 
 	*cFinish <- "com_f"
-	return nil
 }
 
 func readSheetCompanyInfo(sheet *xlsx.Sheet, c *chan (types.CompanyInfo)) error {
@@ -123,8 +124,24 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 				reflect.ValueOf(&cip).Elem().FieldByName((*headers)[colIndex]).SetString(cell.Value)
 			}
 		}
-
-		*c <- cip
+		if strings.Contains(cip.Name, ";") {
+			names := strings.Split(cip.Name, ";")
+			for _, n := range names {
+				copied := types.CompanyInfo{}
+				jsonData, err := json.Marshal(cip)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = json.Unmarshal(jsonData, &copied)
+				if err != nil {
+					log.Fatal(err)
+				}
+				cip.Name = n
+				*c <- copied
+			}
+		} else {
+			*c <- cip
+		}
 	}
 	return nil
 }
