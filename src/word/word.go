@@ -27,8 +27,9 @@ const (
 	STYLE_SU_THREE_CENTER_B       = "STYLE_SU_THREE_CENTER_B"
 
 	STYLE_TABLE_BILL = iota
-	STYLE_TABLE_BILL_NO_PAY
+	STYLE_TABLE_BILL_NO_PAYMENT
 	STYLE_TABLE_AIR_CONTROL
+	STYLE_TABLE_AIR_CONTROL_NO_PAYMENT
 )
 
 var styleTextFiveNormal = document.TextFormat{
@@ -183,7 +184,12 @@ func createSingleDocx(indics *map[string]types.Indication, companies *map[string
 
 	for index, key := range keys {
 		info := (*companies)[key]
-		if indic, found := (*indics)[key]; found && info.IsNeedBill {
+		if indic, found := (*indics)[info.GateNo]; found && info.IsNeedBill {
+			//calculation payment
+			if info.IsAddPayment {
+				indic.Payment = indic.CostAll * info.RateOfPay
+				indic.AirControlPayment = indic.CostAirControal * info.RateOfPay
+			}
 			createDocxPage(doc, &indic, &info)
 			if index != len(keys)-1 {
 				//break
@@ -193,7 +199,7 @@ func createSingleDocx(indics *map[string]types.Indication, companies *map[string
 
 	}
 
-	doc.Save(path.Join(viper.GetString("output"), fmt.Sprintf("%s-%d电费通知单-%s单元.docx", viper.GetString("target_year"), viper.GetInt("target_month"), CN_NUMBER[unit])))
+	doc.Save(path.Join(viper.GetString("output"), fmt.Sprintf("%d-%d电费通知单-%s单元.docx", viper.GetInt("target_year"), viper.GetInt("target_month"), CN_NUMBER[unit])))
 
 	*finish <- fmt.Sprintf("_f_unit_%d", unit)
 }
@@ -208,9 +214,9 @@ func createDocxPage(doc *document.Document, indic *types.Indication, companyInfo
 	sign(doc)
 	doc.AddParagraph("")
 	//table
-	billInfo(doc, indic)
+	billInfo(doc, indic, companyInfo)
 	//expense
-	expense(doc, indic)
+	expense(doc, indic, companyInfo)
 	//backup
 	backup(doc)
 
@@ -240,9 +246,9 @@ func sign(doc *document.Document) {
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
 }
 
-func tableArea(doc *document.Document, indic *types.Indication, style int) {
+func tableArea(doc *document.Document, indic *types.Indication, compInfo *types.CompanyInfo, style int) {
 	var config document.TableConfig = document.TableConfig{}
-	tableTitle(doc, indic, style)
+	tableTitle(doc, compInfo, style)
 	tableConfig(indic, &config, style)
 	if len(config.Data) == 0 {
 		log.Fatal("unsupport table style ", style)
@@ -262,15 +268,24 @@ func tableArea(doc *document.Document, indic *types.Indication, style int) {
 		}
 	}
 }
-func tableTitle(doc *document.Document, indic *types.Indication, style int) {
+func tableTitle(doc *document.Document, companyInfo *types.CompanyInfo, style int) {
 	var paraTitle = &document.Paragraph{}
+	var room string
+	if strings.HasSuffix(companyInfo.GateNo, "总") {
+		room = fmt.Sprintf("%d单元%d层", companyInfo.Unit, companyInfo.Floor)
+	} else {
+		room = companyInfo.GateNo
+	}
 	switch style {
 	case STYLE_TABLE_BILL:
-		paraTitle = doc.AddParagraph(fmt.Sprintf("%s年%d月%s用电量", viper.GetString("target_year"), viper.GetInt("target_month"), indic.RoomNo))
-	case STYLE_TABLE_BILL_NO_PAY:
-		paraTitle = doc.AddParagraph(fmt.Sprintf("%s年%d月%s用电量", viper.GetString("target_year"), viper.GetInt("target_month"), indic.RoomNo))
+		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
+	case STYLE_TABLE_BILL_NO_PAYMENT:
+		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
 	case STYLE_TABLE_AIR_CONTROL:
-		paraTitle = doc.AddParagraph(fmt.Sprintf("%s年%d月%s外机空调用电量", viper.GetString("target_year"), viper.GetInt("target_month"), indic.RoomNo))
+		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s外机空调用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
+	case STYLE_TABLE_AIR_CONTROL_NO_PAYMENT:
+		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s外机空调用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
+
 	}
 	paraTitle.SetStyle(STYLE_SU_THREE_CENTER_B)
 
@@ -289,11 +304,11 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 				fmt.Sprint(indic.IndicLastMonth),
 				strconv.FormatFloat(indic.Times, 'f', 0, 64),
 				strconv.FormatFloat(indic.Indic, 'f', 2, 64),
-				strconv.FormatFloat(indic.Cost, 'f', 2, 64),
-				strconv.FormatFloat(indic.Cost, 'f', 2, 64)},
+				strconv.FormatFloat(indic.CostAll, 'f', 2, 64),
+				strconv.FormatFloat(indic.Payment, 'f', 2, 64)},
 		}
 
-	case STYLE_TABLE_BILL_NO_PAY:
+	case STYLE_TABLE_BILL_NO_PAYMENT:
 		config.Cols = styleTableBillNoPay.Cols
 		config.Rows = styleTableBillNoPay.Rows
 		config.Width = styleTableBillNoPay.Width
@@ -312,6 +327,17 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 		config.Width = styleTableBillAirControl.Width
 		config.ColWidths = styleTableBillAirControl.ColWidths
 		config.Data = [][]string{
+			{"月份", "实际用量（度）", "应缴电费"},
+			{fmt.Sprint(viper.GetInt("target_month")),
+				strconv.FormatFloat(indic.CostAirControal, 'f', 2, 64),
+				strconv.FormatFloat(indic.AirControlPayment, 'f', 2, 64)},
+		}
+	case STYLE_TABLE_AIR_CONTROL_NO_PAYMENT:
+		config.Cols = styleTableBillAirControl.Cols
+		config.Rows = styleTableBillAirControl.Rows
+		config.Width = styleTableBillAirControl.Width
+		config.ColWidths = styleTableBillAirControl.ColWidths
+		config.Data = [][]string{
 			{"月份", "实际用量（度）"},
 			{fmt.Sprint(viper.GetInt("target_month")), strconv.FormatFloat(indic.CostAirControal, 'f', 2, 64)},
 		}
@@ -320,26 +346,33 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 	}
 }
 
-func billInfo(doc *document.Document, indic *types.Indication) {
+func billInfo(doc *document.Document, indic *types.Indication, compInfo *types.CompanyInfo) {
 	para := doc.AddParagraph("缴费信息")
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
 
 	doc.AddParagraph("")
 
-	if indic.RoomNo == "1-1-总" {
-		tableArea(doc, indic, STYLE_TABLE_BILL)
+	if compInfo.IsAddPayment {
+		tableArea(doc, indic, compInfo, STYLE_TABLE_BILL)
 	} else {
-		tableArea(doc, indic, STYLE_TABLE_BILL_NO_PAY)
+		tableArea(doc, indic, compInfo, STYLE_TABLE_BILL_NO_PAYMENT)
+	}
+	if indic.CostAirControal == 0 {
+		return
+	}
+
+	doc.AddParagraph("")
+
+	if compInfo.IsAddPayment {
+		tableArea(doc, indic, compInfo, STYLE_TABLE_AIR_CONTROL)
+	} else {
+		tableArea(doc, indic, compInfo, STYLE_TABLE_AIR_CONTROL_NO_PAYMENT)
 	}
 	doc.AddParagraph("")
-	if indic.CostAirControal != 0 {
-		tableArea(doc, indic, STYLE_TABLE_AIR_CONTROL)
-		doc.AddParagraph("")
-	}
 }
 
-func expense(doc *document.Document, indic *types.Indication) {
-	year, _ := strconv.Atoi(viper.GetString("target_year"))
+func expense(doc *document.Document, indic *types.Indication, companyInfo *types.CompanyInfo) {
+	year := viper.GetInt("target_year")
 	month := viper.GetInt("target_month")
 	lastDayInMonth := utils.DaysInMonth(year, month)
 	//charging cycles
@@ -360,7 +393,11 @@ func expense(doc *document.Document, indic *types.Indication) {
 	doc.AddParagraph("")
 
 	para := doc.AddFormattedParagraph("4.本期电费金额：￥ ", &styleTextFiveNormal)
-	para.Runs = append(para.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("元"))
+	if companyInfo.RateOfPay != 0 {
+		para.Runs = append(para.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll*companyInfo.RateOfPay)), runNormal("元"))
+	} else {
+		para.Runs = append(para.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("元"))
+	}
 	//liquidated damages
 	doc.AddParagraph("")
 	doc.AddFormattedParagraph("5.违约金（如逾期）：￥__/_____ 元", &styleTextFiveNormal)
@@ -369,7 +406,11 @@ func expense(doc *document.Document, indic *types.Indication) {
 	doc.AddParagraph("")
 
 	expenseSumPara := doc.AddFormattedParagraph("6.合计应缴金额：￥", &styleTextFiveNormal)
-	expenseSumPara.Runs = append(expenseSumPara.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("元"))
+	if companyInfo.RateOfPay != 0 {
+		expenseSumPara.Runs = append(expenseSumPara.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll*companyInfo.RateOfPay)), runNormal("元"))
+	} else {
+		expenseSumPara.Runs = append(expenseSumPara.Runs, runWithunderline(fmt.Sprintf(" %.2f ", indic.CostAll)), runNormal("元"))
+	}
 
 	//account info
 	doc.AddParagraph("")
@@ -423,7 +464,7 @@ func runNormal(s string) document.Run {
 }
 
 func backup(doc *document.Document) {
-	year, _ := strconv.Atoi(viper.GetString("target_year"))
+	year := viper.GetInt("target_year")
 	month := viper.GetInt("target_month")
 	next := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	next = next.AddDate(0, 1, 0)

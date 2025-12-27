@@ -129,18 +129,18 @@ func init() {
 	cobra.OnInitialize(initConfig)
 	currentPath, _ := filepath.Abs(".")
 
-	viper.SetDefault("elec_file", filepath.Join(currentPath, "electricity.xlsx"))
+	viper.SetDefault("elec_file", filepath.Join(currentPath, "elec.xlsx"))
 	viper.SetDefault("output", currentPath)
 	viper.SetDefault("target_month", 11)
-	viper.SetDefault("target_year", "2025")
+	viper.SetDefault("target_year", 2025)
 	viper.SetDefault("company_sheet", "公司信息")
 	viper.SetDefault("indication_sheet", "电量统计")
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", currentPath, "output path")
-	rootCmd.PersistentFlags().StringVarP(&input, "elec_file", "i", filepath.Join(currentPath, "electricity.xlsx"), "input file")
+	rootCmd.PersistentFlags().StringVarP(&input, "elec_file", "i", filepath.Join(currentPath, "elec.xlsx"), "input file")
 	rootCmd.PersistentFlags().IntP("target_month", "m", 1, "target month")
-	rootCmd.PersistentFlags().StringP("target_year", "y", "2025", "target year")
+	rootCmd.PersistentFlags().IntP("target_year", "y", 2025, "target year")
 
 	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("elec_file", rootCmd.PersistentFlags().Lookup("elec_file"))
@@ -189,22 +189,20 @@ func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan type
 	for {
 		select {
 		case info := <-cc:
-			// fmt.Printf("%+v \n", info)
 			if len(info.GateNo) == 0 {
 				log.Printf("illegal room no %+v \n", info)
 				continue
 			}
-			// unit := strings.Split(info.GateNo, "-")[0]
 			if companiesMap == nil {
 				companiesMap = make(map[int]map[string]types.CompanyInfo)
 			}
 
 			if unitCompaniesMap, found := companiesMap[info.Unit]; !found {
 				unitCompaniesMap = make(map[string]types.CompanyInfo)
-				unitCompaniesMap[info.GateNo] = info
+				unitCompaniesMap[info.LookUpKey] = info
 				companiesMap[info.Unit] = unitCompaniesMap
 			} else {
-				unitCompaniesMap[info.GateNo] = info
+				unitCompaniesMap[info.LookUpKey] = info
 				companiesMap[info.Unit] = unitCompaniesMap
 			}
 
@@ -221,7 +219,6 @@ func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan type
 			}
 
 		case indic := <-ce:
-			// fmt.Printf("%+v\n", indic)
 			if len(indic.RoomNo) == 0 {
 				log.Printf("illegal room no %+v \n", indic)
 				continue

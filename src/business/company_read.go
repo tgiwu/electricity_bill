@@ -29,7 +29,6 @@ func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) {
 		// return err
 	}
 
-	// readSheetSingleCompany(file.Sheets[0], &companies)
 	if sheet, found := file.Sheet[viper.GetString("company_sheet")]; found {
 
 		err = readSheetCompanyInfo(sheet, c)
@@ -116,7 +115,6 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 					log.Panic(err)
 				}
 				cip.GateNo = v
-				cip.IsAddPay = v == "1-1-总"
 
 			case "IsNeedBill":
 				cip.IsNeedBill = cell.Value == "是"
@@ -136,10 +134,15 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 				if err != nil {
 					log.Fatal(err)
 				}
-				cip.Name = n
+				copied.Name = n
+				copied.IsAddPayment = true
+				copied.LookUpKey = fmt.Sprintf("%s@%s", copied.GateNo, copied.Name)
+				copied.RateOfPay = 1.0 / float64(len(names))
+
 				*c <- copied
 			}
 		} else {
+			cip.LookUpKey = fmt.Sprintf("%s@%s", cip.GateNo, cip.Name)
 			*c <- cip
 		}
 	}

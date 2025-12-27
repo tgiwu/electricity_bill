@@ -44,11 +44,13 @@ type Indication struct {
 	Unit   int     //单元
 	Floor  int     //楼层
 	// Original        float64 //表底
-	IndicLastMonth  float64 //上月读数
-	Indic           float64 //本月读数
-	CostAirControal float64 //空调耗电量
-	Cost            float64 //耗电量（不包含空调）
-	CostAll         float64 //总耗电量
+	IndicLastMonth    float64 //上月读数
+	Indic             float64 //本月读数
+	CostAirControal   float64 //空调耗电量
+	Cost              float64 //耗电量（不包含空调）
+	CostAll           float64 //总耗电量
+	Payment           float64 //应缴费用
+	AirControlPayment float64 //
 }
 
 // 公司信息
@@ -56,12 +58,14 @@ type CompanyInfo struct {
 	Name   string //公司名称
 	GateNo string //门牌号
 	// AreaName   string //区域名称
-	Unit       int    //单元
-	Floor      int    //楼层
-	Contact    string //联系人
-	Phone      string //电话
-	IsNeedBill bool   //是否需要账单，默认只要由公司信息就出账单
-	IsAddPay   bool   //是否添加应缴
+	Unit         int     //单元
+	Floor        int     //楼层
+	Contact      string  //联系人
+	Phone        string  //电话
+	IsNeedBill   bool    //是否需要账单，默认只要由公司信息就出账单
+	IsAddPayment bool    //是否添加应缴
+	RateOfPay    float64 //rate of pay
+	LookUpKey    string  //look up key
 }
 
 // myError
