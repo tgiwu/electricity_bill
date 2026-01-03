@@ -56,6 +56,13 @@ var (
 	}
 
 	styleTableBillAirControl = document.TableConfig{
+		Cols:      3,
+		Rows:      2,
+		Width:     9000,
+		ColWidths: []int{3000, 3000, 3000},
+	}
+
+	styleTableBillAirControlNoBill = document.TableConfig{
 		Cols:      2,
 		Rows:      2,
 		Width:     9000,
@@ -187,7 +194,7 @@ func createSingleDocx(indics *map[string]types.Indication, companies *map[string
 		if indic, found := (*indics)[info.GateNo]; found && info.IsNeedBill {
 			//calculation payment
 			if info.IsAddPayment {
-				indic.Payment = indic.CostAll * info.RateOfPay
+				indic.Payment = indic.Cost * info.RateOfPay
 				indic.AirControlPayment = indic.CostAirControal * info.RateOfPay
 			}
 			createDocxPage(doc, &indic, &info)
@@ -304,7 +311,7 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 				fmt.Sprint(indic.IndicLastMonth),
 				strconv.FormatFloat(indic.Times, 'f', 0, 64),
 				strconv.FormatFloat(indic.Indic, 'f', 2, 64),
-				strconv.FormatFloat(indic.CostAll, 'f', 2, 64),
+				strconv.FormatFloat(indic.Cost, 'f', 2, 64),
 				strconv.FormatFloat(indic.Payment, 'f', 2, 64)},
 		}
 
@@ -333,10 +340,10 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 				strconv.FormatFloat(indic.AirControlPayment, 'f', 2, 64)},
 		}
 	case STYLE_TABLE_AIR_CONTROL_NO_PAYMENT:
-		config.Cols = styleTableBillAirControl.Cols
-		config.Rows = styleTableBillAirControl.Rows
-		config.Width = styleTableBillAirControl.Width
-		config.ColWidths = styleTableBillAirControl.ColWidths
+		config.Cols = styleTableBillAirControlNoBill.Cols
+		config.Rows = styleTableBillAirControlNoBill.Rows
+		config.Width = styleTableBillAirControlNoBill.Width
+		config.ColWidths = styleTableBillAirControlNoBill.ColWidths
 		config.Data = [][]string{
 			{"月份", "实际用量（度）"},
 			{fmt.Sprint(viper.GetInt("target_month")), strconv.FormatFloat(indic.CostAirControal, 'f', 2, 64)},
@@ -466,8 +473,8 @@ func runNormal(s string) document.Run {
 func backup(doc *document.Document) {
 	year := viper.GetInt("target_year")
 	month := viper.GetInt("target_month")
-	next := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
-	next = next.AddDate(0, 1, 0)
+	next := time.Date(year, time.Month(month), 15, 0, 0, 0, 0, time.UTC)
+	next= next.AddDate(0, 1, 0)
 	para := doc.AddParagraph(fmt.Sprintf("缴费截止日期\n请在 %d年%d月15日前缴纳，逾期将按日收取违约金（0.05%%-0.1%%/天）。", next.Year(), next.Month()))
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
 }

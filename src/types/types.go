@@ -50,7 +50,7 @@ type Indication struct {
 	Cost              float64 //耗电量（不包含空调）
 	CostAll           float64 //总耗电量
 	Payment           float64 //应缴费用
-	AirControlPayment float64 //
+	AirControlPayment float64 //空调应缴
 }
 
 // 公司信息

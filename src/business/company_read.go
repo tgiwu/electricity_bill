@@ -136,6 +136,7 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 				}
 				copied.Name = n
 				copied.IsAddPayment = true
+				copied.IsNeedBill = true
 				copied.LookUpKey = fmt.Sprintf("%s@%s", copied.GateNo, copied.Name)
 				copied.RateOfPay = 1.0 / float64(len(names))
 
