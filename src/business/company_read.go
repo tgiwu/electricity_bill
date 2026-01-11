@@ -116,6 +116,8 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 				}
 				cip.GateNo = v
 
+				cip.GateNos = strings.Split(v, ",")
+
 			case "IsNeedBill":
 				cip.IsNeedBill = cell.Value == "是"
 			default:

@@ -30,6 +30,7 @@ const (
 	STYLE_TABLE_BILL_NO_PAYMENT
 	STYLE_TABLE_AIR_CONTROL
 	STYLE_TABLE_AIR_CONTROL_NO_PAYMENT
+	STYLE_TABLE_MULTI_ROOMS
 )
 
 var styleTextFiveNormal = document.TextFormat{
@@ -67,6 +68,12 @@ var (
 		Rows:      2,
 		Width:     9000,
 		ColWidths: []int{3000, 6000},
+	}
+
+	styleTableMultiRows = document.TableConfig{
+		Cols:      5,
+		Width:     9000,
+		ColWidths: []int{1800, 1800, 1800, 1800, 1800},
 	}
 )
 
@@ -152,7 +159,27 @@ func setUpStyle(doc *document.Document) {
 	})
 }
 
-func CreateDocxs(indicMap *map[int]map[string]types.Indication, companiesMap *map[int]map[string]types.CompanyInfo, finish *chan string, wg *sync.WaitGroup) {
+func CreateDocxs(notiList *[]types.NotificationItem, finish *chan string, wg *sync.WaitGroup) {
+path := viper.GetString("output")
+
+	filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+		_, e := os.Stat(path)
+		if os.IsNotExist(e) {
+			return nil
+		}
+		fileHead := fmt.Sprintf("%d-%d电费通知单", viper.GetInt("target_year"), viper.GetInt("target_month")) 
+		if info != nil && strings.HasPrefix(info.Name(), fileHead) &&strings.HasSuffix(info.Name(), ".docx") {
+			log.Println("remove ", path)
+			os.Remove(path)
+		}
+		return nil
+	})
+
+
+}
+
+//de
+func CreateDocxs_(indicMap *map[string]types.Indication, companiesMap *map[int]map[string]types.CompanyInfo, finish *chan string, wg *sync.WaitGroup) {
 
 	path := viper.GetString("output")
 
@@ -161,7 +188,8 @@ func CreateDocxs(indicMap *map[int]map[string]types.Indication, companiesMap *ma
 		if os.IsNotExist(e) {
 			return nil
 		}
-		if info != nil && strings.HasSuffix(info.Name(), ".docx") {
+		fileHead := fmt.Sprintf("%d-%d电费通知单", viper.GetInt("target_year"), viper.GetInt("target_month")) 
+		if info != nil && strings.HasPrefix(info.Name(), fileHead) &&strings.HasSuffix(info.Name(), ".docx") {
 			log.Println("remove ", path)
 			os.Remove(path)
 		}
@@ -191,17 +219,26 @@ func createSingleDocx(indics *map[string]types.Indication, companies *map[string
 
 	for index, key := range keys {
 		info := (*companies)[key]
-		if indic, found := (*indics)[info.GateNo]; found && info.IsNeedBill {
-			//calculation payment
-			if info.IsAddPayment {
-				indic.Payment = indic.Cost * info.RateOfPay
-				indic.AirControlPayment = indic.CostAirControal * info.RateOfPay
+		indicList := []types.Indication{}
+
+		for _, gate := range info.GateNos {
+
+			if indic, found := (*indics)[gate]; found && info.IsNeedBill {
+				//calculation payment
+				if info.IsAddPayment {
+					indic.Payment = indic.Cost * info.RateOfPay
+					indic.AirControlPayment = indic.CostAirControal * info.RateOfPay
+				}
+
+				indicList = append(indicList, indic)
+
 			}
-			createDocxPage(doc, &indic, &info)
-			if index != len(keys)-1 {
-				//break
-				doc.AddPageBreak()
-			}
+		}
+
+		createDocxPage(doc, &indicList, &info)
+		if index != len(keys)-1 {
+			//break
+			doc.AddPageBreak()
 		}
 
 	}
@@ -211,7 +248,7 @@ func createSingleDocx(indics *map[string]types.Indication, companies *map[string
 	*finish <- fmt.Sprintf("_f_unit_%d", unit)
 }
 
-func createDocxPage(doc *document.Document, indic *types.Indication, companyInfo *types.CompanyInfo) {
+func createDocxPage(doc *document.Document, indic *[]types.Indication, companyInfo *types.CompanyInfo) {
 	title(doc)
 	doc.AddParagraph("")
 	floor(doc, companyInfo)
@@ -256,7 +293,7 @@ func sign(doc *document.Document) {
 func tableArea(doc *document.Document, indic *types.Indication, compInfo *types.CompanyInfo, style int) {
 	var config document.TableConfig = document.TableConfig{}
 	tableTitle(doc, compInfo, style)
-	tableConfig(indic, &config, style)
+	tableConfig(indic, compInfo, &config, style)
 	if len(config.Data) == 0 {
 		log.Fatal("unsupport table style ", style)
 		return
@@ -292,13 +329,14 @@ func tableTitle(doc *document.Document, companyInfo *types.CompanyInfo, style in
 		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s外机空调用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
 	case STYLE_TABLE_AIR_CONTROL_NO_PAYMENT:
 		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s外机空调用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
-
+	case STYLE_TABLE_MULTI_ROOMS:
+		paraTitle = doc.AddParagraph(fmt.Sprintf("%d年%d月%s用电量", viper.GetInt("target_year"), viper.GetInt("target_month"), room))
 	}
 	paraTitle.SetStyle(STYLE_SU_THREE_CENTER_B)
 
 }
 
-func tableConfig(indic *types.Indication, config *document.TableConfig, style int) {
+func tableConfig(indic *types.Indication, companyInfo *types.CompanyInfo, config *document.TableConfig, style int) {
 	switch style {
 	case STYLE_TABLE_BILL:
 		config.Cols = styleTableBillNormal.Cols
@@ -348,34 +386,57 @@ func tableConfig(indic *types.Indication, config *document.TableConfig, style in
 			{"月份", "实际用量（度）"},
 			{fmt.Sprint(viper.GetInt("target_month")), strconv.FormatFloat(indic.CostAirControal, 'f', 2, 64)},
 		}
+	case STYLE_TABLE_MULTI_ROOMS:
+		config.Cols = styleTableMultiRows.Cols
+		config.Rows = len(companyInfo.GateNos)
+		config.Width = styleTableMultiRows.Width
+		config.ColWidths = styleTableMultiRows.ColWidths
+		data := [][]string{{"门牌号", "上月表数", "倍率", "本月表数", "实际用量（度）"}}
+		for _, gate := range companyInfo.GateNos {
+			row := []string{gate,
+				strconv.FormatFloat(indic.IndicLastMonth, 'f', 2, 64),
+				strconv.FormatFloat(indic.Times, 'f', 2, 64),
+				strconv.FormatFloat(indic.Indic, 'f', 2, 64),
+				strconv.FormatFloat(indic.Cost, 'f', 2, 64)}
+			data = append(data, row)
+		}
+		config.Data = data
 	default:
 		//ignore
 	}
 }
 
-func billInfo(doc *document.Document, indic *types.Indication, compInfo *types.CompanyInfo) {
+func billInfo(doc *document.Document, indic *[]types.Indication, compInfo *types.CompanyInfo) {
 	para := doc.AddParagraph("缴费信息")
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
 
 	doc.AddParagraph("")
 
-	if compInfo.IsAddPayment {
-		tableArea(doc, indic, compInfo, STYLE_TABLE_BILL)
-	} else {
-		tableArea(doc, indic, compInfo, STYLE_TABLE_BILL_NO_PAYMENT)
-	}
-	if indic.CostAirControal == 0 {
+	if len(compInfo.GateNos) != 0 {
+		tableArea(doc, indic, compInfo, STYLE_TABLE_MULTI_ROOMS)
+		doc.AddParagraph("")
 		return
 	}
 
-	doc.AddParagraph("")
+	if compInfo.IsAddPayment {
+		tableArea(doc, indic, compInfo, STYLE_TABLE_BILL)
+		doc.AddParagraph("")
+	} else {
+		tableArea(doc, indic, compInfo, STYLE_TABLE_BILL_NO_PAYMENT)
+		doc.AddParagraph("")
+	}
+
+	if (*indic)[0].CostAirControal == 0 {
+		return
+	}
 
 	if compInfo.IsAddPayment {
 		tableArea(doc, indic, compInfo, STYLE_TABLE_AIR_CONTROL)
+		doc.AddParagraph("")
 	} else {
 		tableArea(doc, indic, compInfo, STYLE_TABLE_AIR_CONTROL_NO_PAYMENT)
+		doc.AddParagraph("")
 	}
-	doc.AddParagraph("")
 }
 
 func expense(doc *document.Document, indic *types.Indication, companyInfo *types.CompanyInfo) {
@@ -474,18 +535,9 @@ func backup(doc *document.Document) {
 	year := viper.GetInt("target_year")
 	month := viper.GetInt("target_month")
 	next := time.Date(year, time.Month(month), 15, 0, 0, 0, 0, time.UTC)
-	next= next.AddDate(0, 1, 0)
+	next = next.AddDate(0, 1, 0)
 	para := doc.AddParagraph(fmt.Sprintf("缴费截止日期\n请在 %d年%d月15日前缴纳，逾期将按日收取违约金（0.05%%-0.1%%/天）。", next.Year(), next.Month()))
 	para.SetStyle(STYLE_SU_FIVE_LEFT)
 }
 
-func sortByGateNo(companies *map[string]types.CompanyInfo) []string {
 
-	keys := []string{}
-	for key := range *companies {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	return keys
-}

@@ -50,7 +50,7 @@ func readSheets(file *xlsx.File, ce *chan types.Indication, finish *chan string)
 	} else {
 		err = types.MyError{
 			Path: "",
-			Op: "can not find indication sheet !!!!",
+			Op:   "can not find indication sheet !!!!",
 		}
 	}
 	return err
@@ -170,8 +170,8 @@ func readElecData(sheet xlsx.Sheet, headers *map[int]string, ce *chan types.Indi
 
 		}
 
-		if len(indication.RoomNo) != 0 {
-			err := utils.FindUnitFromRoomNo(indication.RoomNo, &indication.Unit, &indication.Floor)
+		if len(indication.IndicNo) != 0 {
+			err := utils.FindUnitFromRoomNo(indication.IndicNo, &indication.Unit, &indication.Floor)
 			if err != nil {
 				log.Panic(err)
 			}

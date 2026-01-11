@@ -1,6 +1,10 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/spf13/viper"
+)
 
 // 区域
 type Area struct {
@@ -39,10 +43,10 @@ type Floor struct {
 
 // 耗电量
 type Indication struct {
-	RoomNo string  //房间号
-	Times  float64 //倍率
-	Unit   int     //单元
-	Floor  int     //楼层
+	IndicNo string  //电表编号
+	Times   float64 //倍率
+	Unit    int     //单元
+	Floor   int     //楼层
 	// Original        float64 //表底
 	IndicLastMonth    float64 //上月读数
 	Indic             float64 //本月读数
@@ -55,8 +59,9 @@ type Indication struct {
 
 // 公司信息
 type CompanyInfo struct {
-	Name   string //公司名称
-	GateNo string //门牌号
+	Name    string   //公司名称
+	GateNo  string   //门牌号
+	GateNos []string //兼容多个房间
 	// AreaName   string //区域名称
 	Unit         int     //单元
 	Floor        int     //楼层
@@ -68,6 +73,25 @@ type CompanyInfo struct {
 	LookUpKey    string  //look up key
 }
 
+type NotificationItem struct {
+	CompanyInfo
+	IndicList    *[]TableRow
+	AirIndicList *[]TableRow
+	CostSum      float64 //电量合计
+	Payment      float64 //电费
+	Liquidated   float64 //滞纳金 默认为0
+	PaymentAll   float64 //电费合计含滞纳金
+}
+
+type TableRow struct {
+	Month          int     //月份
+	IndicLastMonth float64 //上月读数
+	IndicCurrent   float64 //本月读数
+	Times          float64 //倍率
+	Cost           float64 //消耗度数
+	Payment        float64 //应缴费用
+}
+
 // myError
 type MyError struct {
 	Path string
@@ -76,4 +100,22 @@ type MyError struct {
 
 func (p MyError) Error() string {
 	return fmt.Sprintf("%s %s ", p.Path, p.Op)
+}
+
+func (noti *NotificationItem) CalcCost() {
+	if len((*noti.IndicList)) == 0 {
+		return
+	}
+
+	for _, item := range *noti.IndicList {
+		noti.CostSum += item.Cost
+		noti.Payment += item.Cost * viper.GetFloat64("price")
+		noti.PaymentAll += noti.Payment
+	}
+
+	noti.calcLiquidated()
+}
+
+func (noti *NotificationItem) calcLiquidated() {
+	//ignore
 }

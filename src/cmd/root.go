@@ -30,9 +30,12 @@ var (
 	//create docx flag
 	isCreateDocx = false
 
-	indicMap     map[int]map[string]types.Indication
+	//unit to indic map
+	indicMap map[string]types.Indication
+	//unit to Company info map
 	companiesMap map[int]map[string]types.CompanyInfo
-	rootCmd      = &cobra.Command{
+
+	rootCmd = &cobra.Command{
 		Use:   "electricity bill",
 		Short: "construct electricity bill file",
 		Long:  "construct electricity bill file",
@@ -64,15 +67,18 @@ var (
 
 			wg.Wait()
 
-			if len(companiesMap) > 0 && len(indicMap) > 0 {
+			notiMap := map[int][]types.NotificationItem{}
 
+			business.ConstructNotiItems(&companiesMap, &indicMap, &notiMap)
+
+			if len(notiMap) > 0 {
 				wg = sync.WaitGroup{}
-				count = len(companiesMap)
-				wg.Add(len(companiesMap))
+				count = len(notiMap)
+				wg.Add(count)
 
 				go handleDocxCreate(cFinish, &wg)
-
 				word.CreateDocxs(&indicMap, &companiesMap, &cFinish, &wg)
+
 				wg.Wait()
 			}
 
@@ -135,6 +141,7 @@ func init() {
 	viper.SetDefault("target_year", 2025)
 	viper.SetDefault("company_sheet", "公司信息")
 	viper.SetDefault("indication_sheet", "电量统计")
+	viper.SetDefault("price", 1.00)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", currentPath, "output path")
@@ -219,27 +226,16 @@ func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan type
 			}
 
 		case indic := <-ce:
-			if len(indic.RoomNo) == 0 {
+			if len(indic.IndicNo) == 0 {
 				log.Printf("illegal room no %+v \n", indic)
 				continue
 			}
 
 			if indicMap == nil {
-				indicMap = make(map[int]map[string]types.Indication, 1)
-				unitIndicMap := make(map[string]types.Indication, 1)
-				unitIndicMap[indic.RoomNo] = indic
-				indicMap[indic.Unit] = unitIndicMap
+				indicMap = make(map[string]types.Indication, 1)
+				indicMap[indic.IndicNo] = indic
 				continue
 			}
-
-			unitIndicMap, found := indicMap[indic.Unit]
-
-			if !found {
-				unitIndicMap = make(map[string]types.Indication, 0)
-			}
-
-			unitIndicMap[indic.RoomNo] = indic
-			indicMap[indic.Unit] = unitIndicMap
 		}
 	}
 }
