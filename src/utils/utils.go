@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"electricity_bill/src/types"
 	"encoding/json"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -42,4 +44,10 @@ func CopyStruct(dst, src *any) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func SortByGateNo(notis *[]types.NotificationItem) {
+	sort.Slice(*notis, func(i, j int) bool {
+		return (*notis)[i].GateNo < (*notis)[j].GateNo 
+	})
 }

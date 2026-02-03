@@ -6,6 +6,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	FINISH_FLAG = "_f"
+)
+
 // 区域
 type Area struct {
 	Name     string  //名称
@@ -84,6 +88,7 @@ type NotificationItem struct {
 }
 
 type TableRow struct {
+	RoomNo         string  //房间号
 	Month          int     //月份
 	IndicLastMonth float64 //上月读数
 	IndicCurrent   float64 //本月读数

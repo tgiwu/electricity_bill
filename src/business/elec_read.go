@@ -39,7 +39,7 @@ func ReadElec(ce *chan types.Indication, finish *chan string) {
 	if err != nil {
 		log.Panic(err)
 	}
-	*finish <- "ele_f"
+	*finish <- fmt.Sprintf("ele%s", types.FINISH_FLAG)
 }
 
 func readSheets(file *xlsx.File, ce *chan types.Indication, finish *chan string) error {
@@ -85,7 +85,7 @@ func readIndicHeader(sheet *xlsx.Sheet, headerList *map[int]string, finish *chan
 		//find header row by cell value CONTENT_ROOM_NO
 		if v := strings.TrimSpace(row.GetCell(0).Value); v == CONTENT_ROOM_NO {
 			log.Println("header row is ", rowIndex)
-			(*headerList)[0] = "RoomNo"
+			(*headerList)[0] = "IndicNo"
 			var (
 				targetDataIndicLastMonth string
 				targetDataIndic          = fmt.Sprintf("%d-%s", targetMonth, ELEC_CONTENT_INDICATION)
@@ -130,7 +130,7 @@ func readIndicHeader(sheet *xlsx.Sheet, headerList *map[int]string, finish *chan
 			continue
 		}
 	}
-
+	// fmt.Printf("indic header = %+v", headerList)
 	*finish <- "header read finish"
 
 	return nil

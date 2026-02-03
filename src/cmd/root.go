@@ -58,10 +58,11 @@ var (
 			count++
 			//read indication info
 			count++
+
 			var wg sync.WaitGroup
 			wg.Add(count)
 
-			go handleChan(cc, cFinish, ce, &wg)
+			go handleChan(&cc, &cFinish, &ce, &wg)
 			go business.ReadCompany(&cc, &cFinish)
 			go business.ReadElec(&ce, &cFinish)
 
@@ -72,13 +73,8 @@ var (
 			business.ConstructNotiItems(&companiesMap, &indicMap, &notiMap)
 
 			if len(notiMap) > 0 {
-				wg = sync.WaitGroup{}
-				count = len(notiMap)
-				wg.Add(count)
-
-				go handleDocxCreate(cFinish, &wg)
-				word.CreateDocxs(&indicMap, &companiesMap, &cFinish, &wg)
-
+				wg.Add(1)
+				word.CreateDocxs(&notiMap, &cFinish)
 				wg.Wait()
 			}
 
@@ -142,6 +138,7 @@ func init() {
 	viper.SetDefault("company_sheet", "公司信息")
 	viper.SetDefault("indication_sheet", "电量统计")
 	viper.SetDefault("price", 1.00)
+	viper.SetDefault("liquidated", 0.00)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", currentPath, "output path")
@@ -174,28 +171,10 @@ func initConfig() {
 	fmt.Printf("init config  %+v \n", viper.AllSettings())
 }
 
-func handleDocxCreate(cFinish chan (string), wg *sync.WaitGroup) {
-	for {
-		str := <-cFinish
-		log.Println("recive msg", str)
-		if strings.HasPrefix(str, "_f") {
-			log.Println("------------done--------", str)
-			wg.Done()
-			count--
-		} else {
-			log.Println("recive none finish msg ", str)
-		}
-
-		if count == 0 {
-			return
-		}
-	}
-}
-
-func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan types.Indication, wg *sync.WaitGroup) {
+func handleChan(cc *chan (types.CompanyInfo), cFinish *chan (string), ce *chan types.Indication, wg *sync.WaitGroup) {
 	for {
 		select {
-		case info := <-cc:
+		case info := <-*cc:
 			if len(info.GateNo) == 0 {
 				log.Printf("illegal room no %+v \n", info)
 				continue
@@ -213,19 +192,27 @@ func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan type
 				companiesMap[info.Unit] = unitCompaniesMap
 			}
 
-		case str := <-cFinish:
+		case str := <-*cFinish:
 			fmt.Println(str)
-			if str == "ele_f" || str == "com_f" || str == "doc_f" {
+
+			if strings.HasSuffix(str, types.FINISH_FLAG) {
 				wg.Done()
 				count--
 			}
 
 			if count == 0 {
-				log.Println("read finish , start create docx")
-				return
+
 			}
 
-		case indic := <-ce:
+			if str == fmt.Sprintf("docx_create_%s", types.FINISH_FLAG) {
+				log.Println("all finish system going down!")
+				return
+			} else if count == 0 {
+				log.Println("read finish , start create docx")
+			}
+
+		case indic := <-*ce:
+			// fmt.Printf("indic = %+v\n", indic)
 			if len(indic.IndicNo) == 0 {
 				log.Printf("illegal room no %+v \n", indic)
 				continue
@@ -233,9 +220,8 @@ func handleChan(cc chan (types.CompanyInfo), cFinish chan (string), ce chan type
 
 			if indicMap == nil {
 				indicMap = make(map[string]types.Indication, 1)
-				indicMap[indic.IndicNo] = indic
-				continue
 			}
+			indicMap[indic.IndicNo] = indic
 		}
 	}
 }

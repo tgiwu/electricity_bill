@@ -40,7 +40,7 @@ func ReadCompany(c *chan (types.CompanyInfo), cFinish *chan (string)) {
 		log.Panic("can not get company info !!!")
 	}
 
-	*cFinish <- "com_f"
+	*cFinish <- fmt.Sprintf("com%s", types.FINISH_FLAG)
 }
 
 func readSheetCompanyInfo(sheet *xlsx.Sheet, c *chan (types.CompanyInfo)) error {
