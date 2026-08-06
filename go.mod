@@ -1,6 +1,6 @@
 module electricity_bill
 
-go 1.24.4
+go 1.26.5
 
 require (
 	github.com/ZeroHawkeye/wordZero v1.5.0
