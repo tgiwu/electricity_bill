@@ -96,6 +96,7 @@ func readCompanyHeaders(sheet *xlsx.Sheet, headers *[]string) error {
 
 func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.CompanyInfo)) error {
 
+label:
 	for rowIndex := dataRowStart; rowIndex < sheet.MaxRow; rowIndex++ {
 		row, err := sheet.Row(rowIndex)
 		if err != nil {
@@ -112,7 +113,8 @@ func readCompanyData(sheet *xlsx.Sheet, headers *[]string, c *chan (types.Compan
 
 				err = utils.FindUnitFromRoomNo(v, &cip.Unit, &cip.Floor)
 				if err != nil {
-					log.Panic(err)
+					log.Println("room no analysis failed", v)
+					continue label
 				}
 				cip.GateNo = v
 
